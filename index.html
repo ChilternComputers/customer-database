@@ -93,11 +93,18 @@
             border: 2px solid #ddd;
             border-radius: 5px;
             font-size: 1rem;
+            transition: border-color 0.3s, box-shadow 0.3s;
         }
 
         .search-box:focus {
             outline: none;
             border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .search-box::placeholder {
+            color: #999;
+            font-style: italic;
         }
 
         .filter-select {
@@ -106,6 +113,7 @@
             border-radius: 5px;
             font-size: 1rem;
             background: white;
+            display: none; /* Hide the filter select since we removed it */
         }
 
         .export-btn {
@@ -165,6 +173,24 @@
             grid-template-columns: 2fr 1.5fr 1.5fr 2fr 1fr 1.5fr 1fr;
             gap: 1rem;
             align-items: center;
+        }
+
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: color 0.3s;
+        }
+
+        .sortable-header:hover {
+            color: #667eea;
+        }
+
+        .sort-indicator {
+            font-size: 0.8rem;
+            opacity: 0.6;
         }
 
         .table-row {
@@ -599,16 +625,7 @@
         </div>
 
         <div class="toolbar">
-            <input type="text" class="search-box" placeholder="Search customers..." id="searchBox" onkeyup="searchCustomers()">
-            <select class="filter-select" id="contactFilter" onchange="filterCustomers()">
-                <option value="">All Contact Methods</option>
-                <option value="call">Phone Call</option>
-                <option value="email">Email</option>
-                <option value="text">Text Message</option>
-                <option value="website">Website</option>
-                <option value="referral">Referral</option>
-                <option value="other">Other</option>
-            </select>
+            <input type="text" class="search-box" placeholder="Start typing a name to search..." id="searchBox" onkeyup="searchCustomers()" oninput="searchCustomers()">
             <button class="export-btn" onclick="exportCustomers()">Export CSV</button>
         </div>
 
@@ -660,7 +677,9 @@
 
         <div class="customers-table">
             <div class="table-header">
-                <div>Name</div>
+                <div class="sortable-header" onclick="sortByName()">
+                    Name <span class="sort-indicator" id="nameSortIndicator">↕️</span>
+                </div>
                 <div>Phone</div>
                 <div>Email</div>
                 <div>Address</div>
@@ -1067,32 +1086,121 @@
             editingCustomerId = null;
         }
 
-        // Search customers
-        function searchCustomers() {
-            const searchTerm = document.getElementById('searchBox').value.toLowerCase();
-            const contactFilter = document.getElementById('contactFilter').value;
+        // Sorting variables
+        let nameSortOrder = 'none'; // 'none', 'asc', 'desc'
+
+        // Sort customers by name
+        function sortByName() {
+            const indicator = document.getElementById('nameSortIndicator');
             
-            filteredCustomers = customers.filter(customer => {
-                const matchesSearch = !searchTerm || 
-                    customer.first_name.toLowerCase().includes(searchTerm) ||
-                    (customer.last_name && customer.last_name.toLowerCase().includes(searchTerm)) ||
-                    (customer.email && customer.email.toLowerCase().includes(searchTerm)) ||
-                    (customer.phone && customer.phone.includes(searchTerm)) ||
-                    (customer.company && customer.company.toLowerCase().includes(searchTerm));
+            if (nameSortOrder === 'none' || nameSortOrder === 'desc') {
+                // Sort A-Z (ascending)
+                nameSortOrder = 'asc';
+                indicator.textContent = '↑';
+                indicator.title = 'Sorted A-Z';
                 
-                const matchesFilter = !contactFilter || customer.contact_method === contactFilter;
+                filteredCustomers.sort((a, b) => {
+                    const aName = ((a.first_name || '') + ' ' + (a.last_name || '')).trim().toLowerCase();
+                    const bName = ((b.first_name || '') + ' ' + (b.last_name || '')).trim().toLowerCase();
+                    return aName.localeCompare(bName);
+                });
+            } else {
+                // Sort Z-A (descending)
+                nameSortOrder = 'desc';
+                indicator.textContent = '↓';
+                indicator.title = 'Sorted Z-A';
                 
-                return matchesSearch && matchesFilter;
-            });
+                filteredCustomers.sort((a, b) => {
+                    const aName = ((a.first_name || '') + ' ' + (a.last_name || '')).trim().toLowerCase();
+                    const bName = ((b.first_name || '') + ' ' + (b.last_name || '')).trim().toLowerCase();
+                    return bName.localeCompare(aName);
+                });
+            }
             
-            displayTodaysServices();
             displayCustomers();
         }
 
-        // Filter customers
-        function filterCustomers() {
-            searchCustomers(); // Reuse search logic
+        // Reset sort when searching
+        function resetSort() {
+            nameSortOrder = 'none';
+            const indicator = document.getElementById('nameSortIndicator');
+            if (indicator) {
+                indicator.textContent = '↕️';
+                indicator.title = 'Click to sort';
+            }
         }
+
+        // Simplified real-time search function
+        function searchCustomers() {
+            const searchTerm = document.getElementById('searchBox').value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                // No search term - show all customers in original order and reset sort
+                filteredCustomers = [...customers];
+                resetSort();
+            } else {
+                // Filter customers based on search term
+                filteredCustomers = customers.filter(customer => {
+                    // Check if search term matches the beginning of first name, last name, or is contained anywhere
+                    const firstName = (customer.first_name || '').toLowerCase();
+                    const lastName = (customer.last_name || '').toLowerCase();
+                    const fullName = (firstName + ' ' + lastName).trim();
+                    const email = (customer.email || '').toLowerCase();
+                    const phone = (customer.phone || '').toLowerCase();
+                    const company = (customer.company || '').toLowerCase();
+                    const address = (customer.address || '').toLowerCase();
+                    
+                    return firstName.startsWith(searchTerm) ||           // First name starts with search
+                           lastName.startsWith(searchTerm) ||            // Last name starts with search
+                           fullName.startsWith(searchTerm) ||            // Full name starts with search
+                           firstName.includes(searchTerm) ||             // Contains in first name
+                           lastName.includes(searchTerm) ||              // Contains in last name
+                           fullName.includes(searchTerm) ||              // Contains in full name
+                           email.includes(searchTerm) ||                 // Contains in email
+                           phone.includes(searchTerm) ||                 // Contains in phone
+                           company.includes(searchTerm) ||               // Contains in company
+                           address.includes(searchTerm);                 // Contains in address
+                });
+                
+                // Sort filtered results alphabetically by first name, then last name when searching
+                filteredCustomers.sort((a, b) => {
+                    const aName = ((a.first_name || '') + ' ' + (a.last_name || '')).trim().toLowerCase();
+                    const bName = ((b.first_name || '') + ' ' + (b.last_name || '')).trim().toLowerCase();
+                    return aName.localeCompare(bName);
+                });
+                
+                // Update sort indicator to show search results are sorted A-Z
+                nameSortOrder = 'asc';
+                const indicator = document.getElementById('nameSortIndicator');
+                if (indicator) {
+                    indicator.textContent = '↑';
+                    indicator.title = 'Search results sorted A-Z';
+                }
+            }
+            
+            displayTodaysServices();
+            displayCustomers();
+            
+            // Show no results message if needed
+            if (searchTerm && filteredCustomers.length === 0) {
+                const tableBody = document.getElementById('customersTableBody');
+                tableBody.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No customers found</h3>
+                        <p>No customers found for "${searchTerm}"</p>
+                        <p><button onclick="clearSearch()" style="background: #667eea; color: white; border: none; padding: 0.5rem 1rem; border-radius: 5px; cursor: pointer;">Clear Search</button></p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Clear search function
+        function clearSearch() {
+            document.getElementById('searchBox').value = '';
+            searchCustomers(); // This will reset to show all customers
+        }
+
+        // Remove the old filterCustomers function since we no longer need it
 
         // Update statistics
         function updateStats() {
